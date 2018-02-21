@@ -35,6 +35,8 @@ mkSize i = return [data_def, inst_def]
 --   data Eax = Eax
 --   eax :: Eax
 --   eax = Eax
+--   eax' :: AnyRegister
+--   eax' = AnyRegister eax
 --   instance Register Eax where
 --       reg_name = const "eax"
 --       reg_ref  = const "%eax"
@@ -44,15 +46,23 @@ mkSize i = return [data_def, inst_def]
 --   instance LValue Eax
 -- @
 mkRegister :: String -> Integer -> Q [Dec]
-mkRegister name size = return [ data_def, alias_sig, alias, reg_inst
+mkRegister name size = return [ data_def, alias_sig, alias
+                              , reg_inst, alias_sig', alias'
                               , sized_inst, rvalue_inst, lvalue_inst]
  where lname       = mkName name
+       lname'      = mkName $ name ++ "'"
        uname       = mkName $ (\(x:xs) -> toUpper x : xs) name
 
        data_def    = DataD [] uname [] Nothing [NormalC uname []] []
 
        alias_sig   = SigD lname (ConT uname)
        alias       = FunD lname [ Clause [] (NormalB $ ConE uname) [] ]
+
+       alias_sig'  = SigD lname' (ConT $ mkName "AnyRegister")
+       alias'      = FunD lname' [ Clause []
+                                          (NormalB $ AppE (ConE $ mkName "AnyRegister")
+                                                          (VarE lname))
+                                          [] ]
 
        reg_inst    = InstanceD Nothing []
                        (AppT (ConT $ mkName "Register") (ConT uname))

@@ -6,7 +6,45 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- |DSL to write x86_64 assembly
-module Asm where
+module Asm ( Register(..), Size(..), Sized, RValue(..), LValue, Jumpable(..)
+           -- Utilities
+           , getLabel, pushLabelSuffix, popLabelSuffix, assemblyAction, assemblyCode
+           , assemblyToFile, anyr
+           -- Sizes
+           , Size8, Size16, Size32, Size64
+           -- Registers
+           , rax, rbx, rcx, rdx, rsi, rdi, rbp, rsp, r8,  r9,  r10,  r11,  r12,  r13,  r14,  r15
+           , eax, ebx, ecx, edx, esi, edi, ebp, esp, r8d, r9d, r10d, r11d, r12d, r13d, r14d, r15d
+           , ax,  bx,  cx,  dx,  si,  di,  bp,  sp,  r8w, r9w, r10w, r11w, r12w, r13w, r14w, r15w
+           , al,  bl,  cl,  dl,  sil, dil, bpl, spl, r8b, r9b, r10b, r11b, r12b, r13b, r14b, r15b
+           , ah,  bh,  ch,  dh
+           -- AnyRegisters
+           , rax', rbx', rcx',  rdx',  rsi',  rdi',  rbp',  rsp'
+           , r8',  r9',  r10',  r11',  r12',  r13',  r14',  r15'
+           , eax', ebx', ecx',  edx',  esi',  edi',  ebp',  esp'
+           , r8d', r9d', r10d', r11d', r12d', r13d', r14d', r15d'
+           , ax',  bx',  cx',   dx',   si',   di',   bp',   sp'
+           , r8w', r9w', r10w', r11w', r12w', r13w', r14w', r15w'
+           , al',  bl',  cl',   dl',   sil',  dil',  bpl',  spl'
+           , r8b', r9b', r10b', r11b', r12b', r13b', r14b', r15b'
+           , ah',  bh',  ch',   dh'
+           -- Instructions
+           , movb, movw, movl, movq, movabsq, movsbw, movsbl, movsbq, movswl
+           , movswq, movslq, movzbw, movzbl, movzbq, movzwl, movzwq, pushq, popq
+           , leab, leaw, leal, leaq, incb, incw, incl, incq, decb, decw, decl
+           , decq, negb, negw, negl, negq, notb, notw, notl, notq
+           , addb, addw, addl, addq, subb, subw, subl, subq, imulw, imull, imulq
+           , xorb, xorw, xorl, xorq, orb, orw, orl, orq, andb, andw, andl, andq
+           , idivl, divl, cltd, idivq, divq, cqto
+           , sarb, sarw, sarl, sarq, shlb, shlw, shll, shlq, shrb, shrw, shrl, shrq
+           , cmpb, cmpw, cmpl, cmpq, testb, testw, testl, testq
+           , je, jne, jz, jnz, js, jns, jg, jge, jl, jle, ja, jae, jb, jbe
+           , sete, setne, setz, setnz, sets, setns, setg, setge, setl, setle, seta, setae, setb, setbe
+           , cmove, cmovne, cmovz, cmovnz, cmovs, cmovns, cmovg, cmovge
+           , cmovl, cmovle, cmova, cmovae, cmovb, cmovbe
+           , label, jmp, call, leave, ret
+           , comment
+           ) where
 import Asm.Template
 import Data.Int
 import Data.Monoid
@@ -283,8 +321,9 @@ endSource = ""
 
 -- |Apply an action on the generated assembly
 assemblyAction :: Monoid m => (String -> m) -> Asm a -> m
-assemblyAction f asm = ropeCat f $ asm_rope $ snd
-                                 $ runState asm (AsmState (RLeaf beginSource) [] 0)
+assemblyAction f asm = ropeCat f $ RNode
+    (asm_rope $ snd $ runState asm (AsmState (RLeaf beginSource) [] 0))
+    (RLeaf endSource)
 
 -- |Get assembly source code
 assemblyCode :: Asm a -> String

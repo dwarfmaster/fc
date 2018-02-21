@@ -16,14 +16,14 @@ constFun name c = FunD (mkName name)
                        ]
 
 -- |Generates a type for size i and an instance of Size :
--- data Size'i = Size'i
+-- data Size'i
 -- instance Size Size'i where
 --     size_bytes = const $ i / 8
 mkSize :: Integer -> Q [Dec]
 mkSize i = return [data_def, inst_def]
  where name      = mkName $ "Size" ++ show i
        inst_name = mkName "Size"
-       data_def  = DataD [] name [] Nothing [NormalC name []] []
+       data_def  = DataD [] name [] Nothing [] []
        inst_def  = InstanceD Nothing []
                      (AppT (ConT inst_name) (ConT name))
                      [ constFun "size_bytes" $ IntegerL $ i `div` 8 ]

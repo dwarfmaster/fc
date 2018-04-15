@@ -2,13 +2,28 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE FlexibleInstances      #-}
 
 -- |Module for handling generic (instruction-independent) control flow graph
--- TODO export only what's necessary
-module ControlGraph where
+module ControlGraph ( Jumpable(..), Graph(..), ControlJump(..), GraphBlock(..)
+                    , ZGraph, UpIns, DownIns
+                    , emptyGraph, mapGB, mapG
+                    , focus, unfocus, focusUp, focusDown
+                    , peekUp, peekDown, peekEdge
+                    , splitZ, insertZ, updateUpZ, updateDownZ
+                    , gnexts, gprevs, addBlock
+                    , MonadLabel(..), MonadZM(..), ZipperT, runZipperT
+                    ) where
 
-import qualified Data.Map as M
-import           Data.Map (Map)
+import           Prelude                        hiding (fail)
+import qualified Data.Map                       as M
+import           Data.Map                       (Map)
+import           Control.Monad.Trans.State.Lazy (StateT, runStateT)
+import           Control.Monad.Trans.Maybe      (MaybeT, runMaybeT)
+import           Control.Monad.Fail
+import           Control.Monad.State.Class
+import           Control.Monad.Trans.Class
+import           Control.Arrow                  ((***))
 
 
 --  ____        _          ____        __ _       _ _   _             
@@ -342,18 +357,101 @@ class Monad m => MonadLabel m lbl | m -> lbl where
 
 -- |A class for monads that allow to move along a zipper on a graph
 class (Jumpable jmp lbl, MonadLabel m lbl)
-   => MonadCGZ m ins jmp lbl edgs | m -> ins jmp lbl edgs
+   => MonadZM m ins jmp lbl edgs | m -> ins jmp lbl edgs
    where
-    runCGS       :: Graph ins jmp lbl edgs -> lbl -> m a
-                 -> Maybe (a, Graph ins jmp lbl edgs)
     upZM         :: m Bool -- ^Try moving up, returns False if can't
     downZM       :: m Bool -- ^Try moving down, returns False if can't
     peekZM       :: m (UpIns ins jmp lbl edgs, edgs, DownIns ins jmp lbl edgs)
-    updateUpZM   :: (UpIns ins jmp lvl edgs -> ins) -> m ()
+    updateUpZM   :: (UpIns ins jmp lbl edgs -> ins) -> m ()
     updateDownZM :: (ins -> ins)
                  -> (ControlJump ins jmp lbl edgs -> ControlJump ins jmp lbl edgs)
                  -> m ()
-    splitZM      :: (edgs -> (ins,edgs,ins)) -> m ()
+    splitZM      :: (edgs -> (edgs,ins,edgs)) -> m ()
 
--- TODO create an instance of MonadCGZ as a monad transformer
+data ZipperT ins jmp lbl edgs m a = ZipperT
+                                  { zipperState :: StateT (ZGraph ins jmp lbl edgs)
+                                                          (MaybeT m)
+                                                          a
+                                  }
+instance Functor m => Functor (ZipperT ins jmp lbl edgs m) where
+    fmap f = ZipperT . fmap f . zipperState
+instance Monad m => Applicative (ZipperT ins jmp lbl edgs m) where
+    pure                            = ZipperT . pure
+    (ZipperT st1) <*> (ZipperT st2) = ZipperT $ st1 <*> st2
+instance Monad m => Monad (ZipperT ins jmp lbl edgs m) where
+    (ZipperT st1) >>= f = ZipperT $ st1 >>= (zipperState . f)
+instance Monad m => MonadState (ZGraph ins jmp lbl edgs)
+                               (ZipperT ins jmp lbl edgs m) 
+                               where
+    get = ZipperT $ get
+    put = ZipperT . put
+instance MonadTrans (ZipperT ins jmp lbl edgs) where
+    lift = ZipperT . lift . lift
+instance Monad m => MonadFail (ZipperT ins jmp lbl edgs m) where
+    fail = ZipperT . lift . fail
+
+instance MonadLabel m lbl => MonadLabel (ZipperT ins jmp lbl edgs m) lbl where
+    setSeens    = lift . setSeens
+    getNewLabel = lift $ getNewLabel
+
+upCGZ :: Monad m => ZipperT ins jmp lbl edgs m Bool
+upCGZ = do
+    zipper <- get
+    case focusUp zipper of
+        Nothing      -> return False
+        Just nzipper -> put nzipper >> return True
+
+downCGZ :: Monad m => ZipperT ins jmp lbl edgs m Bool
+downCGZ = do
+    zipper <- get
+    case focusDown zipper of
+        Nothing      -> return False
+        Just nzipper -> put nzipper >> return True
+
+peekCGZ :: Monad m => ZipperT ins jmp lbl edgs m
+                              (UpIns ins jmp lbl edgs, edgs, DownIns ins jmp lbl edgs)
+peekCGZ = get >>= \zipper -> return (peekUp zipper, peekEdge zipper, peekDown zipper)
+
+updateUpCGZ :: Monad m
+            => (UpIns ins jmp lbl edgs -> ins)
+            -> ZipperT ins jmp lbl edgs m ()
+updateUpCGZ = modify . updateUpZ
+
+updateDownCGZ :: Monad m
+              => (ins -> ins)
+              -> (ControlJump ins jmp lbl edgs -> ControlJump ins jmp lbl edgs)
+              -> ZipperT ins jmp lbl edgs m ()
+updateDownCGZ = (modify .) . updateDownZ
+
+splitCGZ :: (Ord lbl, MonadLabel m lbl)
+         => (edgs -> (edgs, ins, edgs))
+         -> ZipperT ins jmp lbl edgs m ()
+splitCGZ f = do
+    label  <- getNewLabel
+    zipper <- get
+    case splitZ label f zipper of
+        Nothing      -> fail ""
+        Just nzipper -> put nzipper
+
+runZipperT :: (Monad m, Ord lbl)
+           => Graph ins jmp lbl edgs -> lbl
+           -> ZipperT ins jmp lbl edgs m a
+           -> m (Maybe (a, Graph ins jmp lbl edgs))
+runZipperT graph label monad =
+    case focus graph label of
+        Nothing     -> return Nothing
+        Just zipper -> fmap (fmap $ id *** unfocus)
+                     $ runMaybeT 
+                     $ runStateT (zipperState monad) zipper
+
+instance (MonadLabel m lbl, Ord lbl, Jumpable jmp lbl)
+       => MonadZM (ZipperT ins jmp lbl edgs m)
+                  ins jmp lbl edgs
+                  where
+    upZM         = upCGZ
+    downZM       = downCGZ
+    peekZM       = peekCGZ
+    updateUpZM   = updateUpCGZ
+    updateDownZM = updateDownCGZ
+    splitZM      = splitCGZ
 

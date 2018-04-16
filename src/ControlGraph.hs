@@ -5,9 +5,9 @@
 {-# LANGUAGE FlexibleInstances      #-}
 
 -- |Module for handling generic (instruction-independent) control flow graph
-module ControlGraph ( Jumpable(..), Graph(..), ControlJump(..), GraphBlock(..)
+module ControlGraph ( Jumpable(..), Graph, ControlJump(..)
                     , ZGraph, UpIns, DownIns
-                    , emptyGraph, mapGB, mapG
+                    , emptyGraph, mapG, optimize
                     , focus, unfocus, focusUp, focusDown
                     , peekUp, peekDown, peekEdge
                     , splitZ, insertZ, updateUpZ, updateDownZ
@@ -18,6 +18,7 @@ module ControlGraph ( Jumpable(..), Graph(..), ControlJump(..), GraphBlock(..)
 import           Prelude                        hiding (fail)
 import qualified Data.Map                       as M
 import           Data.Map                       (Map)
+import           Control.Monad                  (guard)
 import           Control.Monad.Trans.State.Lazy (StateT, runStateT)
 import           Control.Monad.Trans.Maybe      (MaybeT, runMaybeT)
 import           Control.Monad.Fail
@@ -213,9 +214,11 @@ gnexts (Graph mp) lbl = M.lookup lbl mp >>= \block ->
         Exit       -> []
         Jump j     -> nexts j
         Continue l -> [l]
- where getJump :: GraphBlock ins jmp lbl edgs -> ControlJump ins jmp lbl edgs
-       getJump (GraphBlockEnd  _ _ j    ) = j
-       getJump (GraphBlockCons _ _ downb) = getJump downb
+
+-- |Returns the jump of a graph block
+getJump :: GraphBlock ins jmp lbl edgs -> ControlJump ins jmp lbl edgs
+getJump (GraphBlockEnd  _ _ j    ) = j
+getJump (GraphBlockCons _ _ downb) = getJump downb
 
 -- |Get the antecedents of a block
 -- Returns Nothing if lbl is not the label of a node
@@ -335,10 +338,48 @@ updateDownZ f _ (ZGraph e upb (DownBlock i _ downb) gr label) =
 updateDownZ _ g (ZGraph e upb (LastBlock j _) gr label) =
     ZGraph e upb (LastBlock (g j) e) gr label
 
--- TODO implement an optimize function that does the following :
--- *Combine all block that are linearly linked (ie if two block are linked
+-- |Combine all block that are linearly linked (ie if two block are linked
 -- by a Continue, and the second has only one input, combine them in only
 -- one block)
+optimize :: forall ins jmp lbl edgs
+          . (Ord lbl, Jumpable jmp lbl)
+         => Graph ins jmp lbl edgs
+         -> Graph ins jmp lbl edgs
+optimize graph@(Graph mp) = let (ngraph,end) = foldr tryApplying (graph, True)
+                                             $ fmap compress
+                                             $ M.keys mp
+                            in if end then ngraph
+                                      else optimize ngraph
+ where compress :: lbl -> Graph ins jmp lbl edgs -> Maybe (Graph ins jmp lbl edgs)
+       compress label gr@(Graph gmp) = do
+           block  <- M.lookup label gmp
+           nlabel <- getContinue block
+           guard  $ nlabel /= label
+           nblock <- M.lookup nlabel gmp
+           prevs  <- gprevs gr nlabel
+           guard  $ length prevs == 1
+           let mkblock = appendBlock block nblock
+           return $ Graph $ M.insert label mkblock $ M.delete nlabel gmp
+
+       getContinue :: GraphBlock ins jmp lbl edgs -> Maybe lbl
+       getContinue block = case getJump block of
+           Exit            -> Nothing
+           Jump _          -> Nothing
+           Continue nlabel -> Just nlabel
+
+       -- |Appends two blocks by discarding the jump at the end of the first
+       -- (preserves the semantics if the jump at the end of the first is a
+       -- Continue to the second block)
+       appendBlock :: GraphBlock ins jmp lbl edgs
+                   -> GraphBlock ins jmp lbl edgs
+                   -> GraphBlock ins jmp lbl edgs
+       appendBlock (GraphBlockCons i e tl) bg = GraphBlockCons i e $ appendBlock tl bg
+       appendBlock (GraphBlockEnd  i e _)  bg = GraphBlockCons i e bg
+
+       tryApplying :: (a -> Maybe a) -> (a,Bool) -> (a,Bool)
+       tryApplying f (x,b) = case f x of
+                               Nothing -> (x, b)
+                               Just y  -> (y, False)
 
 
 

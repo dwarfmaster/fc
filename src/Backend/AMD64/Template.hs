@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- |Template Haskell definitions for the Asm module
-module Asm.Template (mkSize, mkRegister) where
+module Backend.AMD64.Template (mkSize, mkRegister) where
 import Language.Haskell.TH
 import Data.Char (toUpper)
 

@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 executable fc
   main-is:             Main.hs
-  other-modules:       Asm, Asm.Template
+  other-modules:       Backend
   build-depends:       base >=4.9 && <4.10
                      , array, containers, transformers
                      , mtl, template-haskell

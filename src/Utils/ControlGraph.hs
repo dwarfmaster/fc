@@ -5,15 +5,15 @@
 {-# LANGUAGE FlexibleInstances      #-}
 
 -- |Module for handling generic (instruction-independent) control flow graph
-module ControlGraph ( Jumpable(..), Graph, ControlJump(..)
-                    , ZGraph, UpIns, DownIns
-                    , emptyGraph, mapG, optimize
-                    , focus, unfocus, focusUp, focusDown
-                    , peekUp, peekDown, peekEdge
-                    , splitZ, insertZ, updateUpZ, updateDownZ
-                    , gnexts, gprevs, addBlock
-                    , MonadLabel(..), MonadZM(..), ZipperT, runZipperT
-                    ) where
+module Utils.ControlGraph ( Jumpable(..), Graph, ControlJump(..)
+                          , ZGraph, UpIns, DownIns
+                          , emptyGraph, mapG, optimize
+                          , focus, unfocus, focusUp, focusDown
+                          , peekUp, peekDown, peekEdge
+                          , splitZ, insertZ, updateUpZ, updateDownZ
+                          , gnexts, gprevs, addBlock
+                          , MonadLabel(..), MonadZM(..), ZipperT, runZipperT
+                          ) where
 
 import           Prelude                        hiding (fail)
 import qualified Data.Map                       as M

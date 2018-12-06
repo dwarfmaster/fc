@@ -2,6 +2,7 @@
 module Frontend.Kotlin.Parser
 
 import Frontend.Kotlin.AST
+import Tools.Annotation
 import Lightyear.Core
 import Lightyear.Char
 import Lightyear.Strings
@@ -186,4 +187,48 @@ comment = commentStar <|>| commentLine
 
 white : Parser ()
 white = skip $ many $ (skip $ oneOf " \t\n") <|>| comment
+
+
+--  _____                   ____                          
+-- |_   _|   _ _ __   ___  |  _ \ __ _ _ __ ___  ___ _ __ 
+--   | || | | | '_ \ / _ \ | |_) / _` | '__/ __|/ _ \ '__|
+--   | || |_| | |_) |  __/ |  __/ (_| | |  \__ \  __/ |   
+--   |_| \__, | .__/ \___| |_|   \__,_|_|  |___/\___|_|   
+--       |___/|_|                                         
+
+mutual
+  typeP : Parser TypePos
+  typeP = do
+    p  <- getPosition
+    tp <- typeNonNull
+    mb <- opt $ char '?'
+    pure $ case mb of
+      Nothing => tp
+      Just _  => Ann p $ TNull tp
+
+  typeNonNull : Parser TypePos
+  typeNonNull = typeParenOrFun <|>| commitTo typeParams
+
+  typeParams : Parser TypePos
+  typeParams = do
+    p  <- getPosition
+    tp <- ident
+    mtps <- opt $ char '<' >! do
+      tps <- sepBy1 typeP (char ',')
+      skip $ char '>'
+      pure $ tps
+    pure $ Ann p $ TParam tp $ fromMaybe [] mtps
+
+  typeParenOrFun : Parser TypePos
+  typeParenOrFun = do
+    p   <- getPosition
+    tps <- parens (sepBy typeP (char ','))
+    ret <- opt $ string "->" >>= \_ => commitTo typeP
+    case ret of
+      Nothing => case tps of
+                   [tp] => pure tp
+                   _    => fail "Invalid syntax"
+      Just rt => pure $ Ann p $ TFun tps rt
+
+
 

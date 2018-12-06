@@ -28,9 +28,9 @@ data SyntaxType = TypeTy | VarTy | ParamTy | ParamCTy
                 | ExprTy | BlockTy | BlockExprTy | AccessTy
 
 data SyntaxF : (k : SyntaxType -> Type) -> (i : SyntaxType) -> Type where
-  TParam  : Ident -> FullList (k TypeTy) -> SyntaxF k TypeTy
+  TParam  : Ident -> List (k TypeTy) -> SyntaxF k TypeTy
   TNull   : k TypeTy -> SyntaxF k TypeTy
-  TFun    : List (k TypeTy) -> SyntaxF k TypeTy
+  TFun    : List (k TypeTy) -> k TypeTy -> SyntaxF k TypeTy
 
   VVar    : Ident -> Maybe (k TypeTy) -> k ExprTy -> SyntaxF k VarTy
   VVal    : Ident -> Maybe (k TypeTy) -> k ExprTy -> SyntaxF k VarTy
@@ -95,7 +95,7 @@ AstF SyntaxType SyntaxF where
   --                              |_|   
   localMap _ _ fn TypeTy (TParam x y) = TParam x $ map (fn TypeTy) y
   localMap _ _ fn TypeTy (TNull x)    = TNull $ fn TypeTy x
-  localMap _ _ fn TypeTy (TFun xs)    = TFun $ map (fn TypeTy) xs
+  localMap _ _ fn TypeTy (TFun xs x)  = TFun (map (fn TypeTy) xs) $ fn TypeTy x
 
   localMap _ _ fn VarTy (VVar x y z) = VVar x (map (fn TypeTy) y) $ fn ExprTy z
   localMap _ _ fn VarTy (VVal x y z) = VVal x (map (fn TypeTy) y) $ fn ExprTy z

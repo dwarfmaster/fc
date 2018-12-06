@@ -5,6 +5,8 @@ import Tools.AstF
 import Tools.FullList
 import Tools.Annotation
 
+%access public export
+
 --     _    ____ _____   _____                 _             
 --    / \  / ___|_   _| |  ___|   _ _ __   ___| |_ ___  _ __ 
 --   / _ \ \___ \ | |   | |_ | | | | '_ \ / __| __/ _ \| '__|

@@ -305,7 +305,45 @@ mutual
 
 mutual
   exprP : Parser ExprPos
-  exprP = ?exprPHole
+  exprP = string "expr" >> getPosition >>= \p => pure $ Ann p $ EInt 42 -- TODO
+
+  exprP0 : Parser ExprPos
+  exprP0 = do
+    p     <- getPosition
+    start <- exprP0'
+    subs  <- many subP
+    pure $ foldl (\ep => \(sym,p',sub) => Ann p $ EAccess $ Ann p'
+                                        $ if sym == "?." then ANSub ep sub else ASub ep sub)
+                 start subs
+   where subP : Parser (String, Position, Ident)
+         subP = do
+           white
+           str <- string "?." <|>| string "."
+           white
+           p   <- getPosition
+           sub <- ident
+           pure $(str, p, sub)
+
+  exprP0' : Parser ExprPos
+  exprP0' = getPosition >>= \p => ( keyword TRUE  >> pure (Ann p ETrue)
+                               <|>| keyword FALSE >> pure (Ann p EFalse)
+                               <|>| keyword THIS  >> pure (Ann p EThis)
+                               <|>| keyword NULL  >> pure (Ann p ENull)
+                               <|>| Ann p <$> (EInt <$> number)
+                               <|>| Ann p <$> (EStr <$> string)
+                               <|>| string "(" >> white >>
+                                      (exprP >>= \p => white >> string ")" >> pure p)
+                               <|>| callP
+                               <|>| Ann p <$> (EAccess <$> (Ann p <$> (AIdent <$> ident))))
+
+  callP : Parser ExprPos
+  callP = getPosition >>= \p =>
+          ident >>= \id =>
+          wstring "(" >>= \_ => commitTo $ do
+    args <- sepBy exprP $ wstring ","
+    white
+    string ")"
+    pure $ Ann p $ ECall id args
 
   accessP : Parser AccessPos
   accessP = ?accessPHole

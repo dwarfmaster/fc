@@ -20,6 +20,40 @@ data Operator = RefEq | RefNeq
               | Plus | Subs | Mult | Div | Modulo
               | And | Or
 
+operatorLvl : Operator -> Nat
+operatorLvl RefEq     = 6
+operatorLvl RefNeq    = 6
+operatorLvl StructEq  = 6
+operatorLvl StructNeq = 6
+operatorLvl Lt        = 5
+operatorLvl Le        = 5
+operatorLvl Gt        = 5
+operatorLvl Ge        = 5
+operatorLvl Plus      = 4
+operatorLvl Subs      = 4
+operatorLvl Mult      = 3
+operatorLvl Div       = 3
+operatorLvl Modulo    = 3
+operatorLvl And       = 7
+operatorLvl Or        = 8
+
+Show Operator where
+  show RefEq     = "==="
+  show RefNeq    = "!=="
+  show StructEq  = "=="
+  show StructNeq = "!="
+  show Lt        = "<"
+  show Le        = "<="
+  show Gt        = ">"
+  show Ge        = ">="
+  show Plus      = "+"
+  show Subs      = "-"
+  show Mult      = "*"
+  show Div       = "/"
+  show Modulo    = "%"
+  show And       = "&&"
+  show Or        = "||"
+
 Ident : Type
 Ident = String
 
@@ -37,8 +71,8 @@ data SyntaxF : (k : SyntaxType -> Type) -> (i : SyntaxType) -> Type where
 
   Param   : Ident -> k TypeTy -> SyntaxF k ParamTy
 
-  PCVar   : Ident -> Maybe (k TypeTy) -> k ExprTy -> SyntaxF k ParamCTy
-  PCVal   : Ident -> Maybe (k TypeTy) -> k ExprTy -> SyntaxF k ParamCTy
+  PCVar   : Ident -> k TypeTy -> SyntaxF k ParamCTy
+  PCVal   : Ident -> k TypeTy -> SyntaxF k ParamCTy
 
   Class   : Ident -> List Ident -> FullList (k ParamCTy)
          -> List (k VarTy) -> SyntaxF k ClassTy
@@ -102,8 +136,8 @@ AstF SyntaxType SyntaxF where
 
   localMap _ _ fn ParamTy (Param x y) = Param x $ fn TypeTy y
 
-  localMap _ _ fn ParamCTy (PCVar x y z) = PCVar x (map (fn TypeTy) y) $ fn ExprTy z
-  localMap _ _ fn ParamCTy (PCVal x y z) = PCVal x (map (fn TypeTy) y) $ fn ExprTy z
+  localMap _ _ fn ParamCTy (PCVar x y) = PCVar x $ (fn TypeTy) y
+  localMap _ _ fn ParamCTy (PCVal x y) = PCVal x $ (fn TypeTy) y
 
   localMap _ _ fn ClassTy (Class x xs y ys) = Class x xs
                                                     (map (fn ParamCTy) y)

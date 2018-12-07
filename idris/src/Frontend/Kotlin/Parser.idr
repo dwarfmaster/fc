@@ -49,6 +49,9 @@ filterMap f (h :: t) = case f h of
                             Just x  => x :: filterMap f t
                             Nothing => filterMap f t
 
+(>>) : Monad m => m a -> m b -> m b
+m >> m' = m >>= \_ => m'
+
 
 --  ____              _              -------------------------------------------
 -- / ___| _   _ _ __ | |_ __ ___  __ -------------------------------------------
@@ -168,8 +171,8 @@ string = concat <$> between (char '"') (char '"') (many car)
 mutual
   commentStarString : Parser ()
   commentStarString = (skip $ string "*/")
-                 <|>| (commentStar >>= \_ => commentStarString)
-                 <|>| (anyChar >>= \_ => commentStarString)
+                 <|>| (commentStar >> commentStarString)
+                 <|>| (anyChar >> commentStarString)
   
   commentStar : Parser ()
   commentStar = string "/*" >! commentStarString
@@ -177,7 +180,7 @@ mutual
 mutual
   commentLineString : Parser ()
   commentLineString = (skip $ endOfLine)
-                 <|>| (anyChar >>= \_ => commentLineString)
+                 <|>| (anyChar >> commentLineString)
 
   commentLine : Parser ()
   commentLine = string "//" >! commentLineString
@@ -188,6 +191,9 @@ comment = commentStar <|>| commentLine
 
 white : Parser ()
 white = skip $ many $ (skip $ oneOf " \t\n") <|>| comment
+
+wstring : String -> Parser ()
+wstring str = white >> string str >> white
 
 
 --  _____                   ____                           ---------------------
@@ -202,7 +208,7 @@ mutual
   typeP = do
     p  <- getPosition
     tp <- typeNonNull
-    mb <- opt $ char '?'
+    mb <- opt $ white >> char '?'
     pure $ case mb of
       Nothing => tp
       Just _  => Ann p $ TNull tp
@@ -214,17 +220,17 @@ mutual
   typeParams = do
     p  <- getPosition
     tp <- ident
-    mtps <- opt $ char '<' >! do
-      tps <- sepBy1 typeP (char ',')
-      skip $ char '>'
+    mtps <- opt $ white >> char '<' >! do
+      tps <- sepBy1 typeP $ wstring ","
+      skip $ white >> char '>'
       pure $ tps
     pure $ Ann p $ TParam tp $ fromMaybe [] mtps
 
   typeParenOrFun : Parser TypePos
   typeParenOrFun = do
     p   <- getPosition
-    tps <- parens (sepBy typeP (char ','))
-    ret <- opt $ string "->" >>= \_ => commitTo typeP
+    tps <- parens (sepBy typeP $ wstring ",")
+    ret <- opt $ wstring "->" >> commitTo typeP
     case ret of
       Nothing => case tps of
                    [tp] => pure tp
@@ -244,7 +250,9 @@ mutual
   paramP = do
     p  <- getPosition
     id <- ident
+    white
     skip $ string ":"
+    white
     tp <- typeP
     pure $ Ann p $ Param id tp
 
@@ -262,8 +270,11 @@ mutual
   paramCP = do
     p    <- getPosition
     qual <- string "var" <|>| string "val"
+    white
     id   <- ident
+    white
     skip $ string ":"
+    white
     tp   <- typeP
     pure $ Ann p $ if qual == "var" then PCVar id tp
                                     else PCVal id tp

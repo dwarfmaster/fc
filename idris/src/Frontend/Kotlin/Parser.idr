@@ -52,6 +52,15 @@ filterMap f (h :: t) = case f h of
 (>>) : Monad m => m a -> m b -> m b
 m >> m' = m >>= \_ => m'
 
+infixl 10 <**>
+(<**>) : Parser a -> Parser b -> Parser (Either a b)
+pa <**> pb = Left  <$> pa
+        <|>| Right <$> pb
+
+unmaybe : Maybe (List a) -> List a
+unmaybe Nothing  = []
+unmaybe (Just l) = l
+
 
 --  ____              _              -------------------------------------------
 -- / ___| _   _ _ __ | |_ __ ___  __ -------------------------------------------
@@ -192,6 +201,15 @@ comment = commentStar <|>| commentLine
 white : Parser ()
 white = skip $ many $ (skip $ oneOf " \t\n") <|>| comment
 
+white1 : Parser ()
+white1 = skip $ some $ (skip $ oneOf " \t\n") <|>| comment
+
+wnewline : Parser ()
+wnewline = do
+  skip $ many $ (skip $ oneOf " \t") <|>| comment
+  skip $ string "\n"
+  white
+
 wstring : String -> Parser ()
 wstring str = white >> string str >> white
 
@@ -270,13 +288,149 @@ mutual
   paramCP = do
     p    <- getPosition
     qual <- string "var" <|>| string "val"
-    white
+    white1
     id   <- ident
-    white
-    skip $ string ":"
-    white
+    wstring ":"
     tp   <- typeP
     pure $ Ann p $ if qual == "var" then PCVar id tp
                                     else PCVal id tp
+
+
+--  _____                   ____                           ---------------------
+-- | ____|_  ___ __  _ __  |  _ \ __ _ _ __ ___  ___ _ __  ---------------------
+-- |  _| \ \/ / '_ \| '__| | |_) / _` | '__/ __|/ _ \ '__| ---------------------
+-- | |___ >  <| |_) | |    |  __/ (_| | |  \__ \  __/ |    ---------------------
+-- |_____/_/\_\ .__/|_|    |_|   \__,_|_|  |___/\___|_|    ---------------------
+--            |_|                                          ---------------------
+
+mutual
+  exprP : Parser ExprPos
+  exprP = ?exprPHole
+
+  accessP : Parser AccessPos
+  accessP = ?accessPHole
+
+  blockP : Parser BlockPos
+  blockP = string "{" >>= \_ => commitTo $ do
+    body <- sepBy1 (varP <**> exprP) $ wstring ";"
+    opt $ white >> string ";"
+    white
+    p <- getPosition
+    skip $ string "}"
+    pure $ foldr storer (Ann p BEmpty) body
+   where storer : Either VarPos ExprPos
+               -> BlockPos -> BlockPos
+         storer (Left  (Ann p var))  acc = Ann p $ BVar  (Ann p var)  acc
+         storer (Right (Ann p expr)) acc = Ann p $ BExpr (Ann p expr) acc
+
+  blockExprP : Parser BlockExprPos
+  blockExprP = Ann <$> getPosition <*> ( BEBlock <$> blockP
+                                    <|>| BEExpr  <$> commitTo exprP)
+
+  varP : Parser VarPos
+  varP = do
+    p    <- getPosition
+    qual <- string "var" <|>| string "val"
+    white1
+    id   <- ident
+    tp   <- opt $ wstring ":" >! typeP
+    wstring "="
+    expr <- exprP
+    pure $ Ann p $ if qual == "var" then VVar id tp expr
+                                    else VVal id tp expr
+
+
+
+--   ____ _                 ____                           ---------------------
+--  / ___| | __ _ ___ ___  |  _ \ __ _ _ __ ___  ___ _ __  ---------------------
+-- | |   | |/ _` / __/ __| | |_) / _` | '__/ __|/ _ \ '__| ---------------------
+-- | |___| | (_| \__ \__ \ |  __/ (_| | |  \__ \  __/ |    ---------------------
+--  \____|_|\__,_|___/___/ |_|   \__,_|_|  |___/\___|_|    ---------------------
+--                                                         ---------------------
+
+mutual
+  classP : Parser ClassPos
+  classP = do
+    p <- getPosition
+    keyword DATA
+    white1
+    keyword CLASS
+    white1
+    name   <- ident
+    params <- opt $ wstring "<" >! do
+      prms <- sepBy1 ident $ wstring ","
+      white
+      skip $ string ">"
+      pure prms
+    wstring "("
+    args   <- sepBy1 paramCP $ wstring ","
+    wstring ")"
+    body   <- opt $ wstring "{" >! do
+      vars <- sepBy1 varP $ wstring ";"
+      opt $ wstring ";"
+      white
+      skip $ string "}"
+      pure vars
+    pure $ Ann p $ Class name (unmaybe params) args (unmaybe body)
+
+
+
+--  _____              ____                           --------------------------
+-- |  ___|   _ _ __   |  _ \ __ _ _ __ ___  ___ _ __  --------------------------
+-- | |_ | | | | '_ \  | |_) / _` | '__/ __|/ _ \ '__| --------------------------
+-- |  _|| |_| | | | | |  __/ (_| | |  \__ \  __/ |    --------------------------
+-- |_|   \__,_|_| |_| |_|   \__,_|_|  |___/\___|_|    --------------------------
+--                                                    --------------------------
+
+mutual
+  funP : Parser FunPos
+  funP = do
+    p <- getPosition
+    keyword FUN
+    params <- opt $ wstring "<" >! do
+      prms <- sepBy1 ident $ wstring ","
+      white
+      skip $ string ">"
+      pure prms
+    white
+    name   <- ident
+    wstring "("
+    args   <- sepBy paramP $ wstring ","
+    tp     <- opt $ wstring ":" >! typeP
+    white
+    body   <- blockP
+    pure $ Ann p $ Fun (unmaybe params) name args tp body
+
+
+--  ____            _   ____                           -------------------------
+-- |  _ \  ___  ___| | |  _ \ __ _ _ __ ___  ___ _ __  -------------------------
+-- | | | |/ _ \/ __| | | |_) / _` | '__/ __|/ _ \ '__| -------------------------
+-- | |_| |  __/ (__| | |  __/ (_| | |  \__ \  __/ |    -------------------------
+-- |____/ \___|\___|_| |_|   \__,_|_|  |___/\___|_|    -------------------------
+--                                                     -------------------------
+
+mutual
+  declP : Parser DeclPos
+  declP = getPosition >>= \p => Ann p <$> declP'
+
+  declP' : Parser (SyntaxF (\id => SyntaxAnn id Position) DeclTy)
+  declP' = DFun   <$> funP
+      <|>| DClass <$> classP
+      <|>| DVar   <$> commitTo (varP >>= \v => white >> string ";" >> pure v)
+
+
+--  _____ _ _        ____                           ----------------------------
+-- |  ___(_) | ___  |  _ \ __ _ _ __ ___  ___ _ __  ----------------------------
+-- | |_  | | |/ _ \ | |_) / _` | '__/ __|/ _ \ '__| ----------------------------
+-- |  _| | | |  __/ |  __/ (_| | |  \__ \  __/ |    ----------------------------
+-- |_|   |_|_|\___| |_|   \__,_|_|  |___/\___|_|    ----------------------------
+--                                                  ----------------------------
+
+mutual
+  fileP : Parser FilePos
+  fileP = do
+    p     <- getPosition
+    decls <- sepBy declP wnewline
+    pure $ Ann p $ File decls
 
 

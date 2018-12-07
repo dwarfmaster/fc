@@ -115,7 +115,10 @@ prettyPrintGen _ shower lvl _ tbs (Fun xs x ys y z) = concat (take tbs (repeat "
                                                    ++ x ++ "("
                                                    ++ ( intersperse ", "
                                                       $ map (shower ParamTy 0) ys)
-                                                   ++ ") : " ++ shower TypeTy 0 y
+                                                   ++ ")"
+                                                   ++ case y of
+                                                        Nothing => ""
+                                                        Just y' => " : " ++ shower TypeTy 0 y'
                                                    ++ " {\n" ++ shower BlockTy (tbs + 1) z
 
 

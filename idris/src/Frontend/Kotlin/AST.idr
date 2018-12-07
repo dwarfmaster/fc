@@ -74,11 +74,11 @@ data SyntaxF : (k : SyntaxType -> Type) -> (i : SyntaxType) -> Type where
   PCVar   : Ident -> k TypeTy -> SyntaxF k ParamCTy
   PCVal   : Ident -> k TypeTy -> SyntaxF k ParamCTy
 
-  Class   : Ident -> List Ident -> FullList (k ParamCTy)
+  Class   : Ident -> List Ident -> List (k ParamCTy) -- TODO FullList ?
          -> List (k VarTy) -> SyntaxF k ClassTy
 
   Fun     : List Ident -> Ident -> List (k ParamTy)
-         -> k TypeTy -> k BlockTy -> SyntaxF k FunTy
+         -> Maybe (k TypeTy) -> k BlockTy -> SyntaxF k FunTy
 
   DVar    : k VarTy -> SyntaxF k DeclTy
   DClass  : k ClassTy -> SyntaxF k DeclTy
@@ -144,7 +144,7 @@ AstF SyntaxType SyntaxF where
                                                     (map (fn VarTy) ys)
 
   localMap _ _ fn FunTy (Fun xs x ys y z) = Fun xs x (map (fn ParamTy) ys)
-                                                (fn TypeTy y)
+                                                (map (fn TypeTy) y)
                                                 (fn BlockTy z)
 
   localMap _ _ fn DeclTy (DVar x)   = DVar $ fn VarTy x

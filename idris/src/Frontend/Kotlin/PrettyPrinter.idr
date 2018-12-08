@@ -105,6 +105,23 @@ prettyPrintGen _ shower lvl _ tbs (PCVar x y) = "var " ++ x ++ " : " ++ shower T
 prettyPrintGen _ shower lvl _ tbs (PCVal x y) = "val " ++ x ++ " : " ++ shower TypeTy 0 y
 
 
+
+--   ___ _            _____     
+--  / __| |__ _ _____|_   _|  _ 
+-- | (__| / _` (_-<_-< | || || |
+--  \___|_\__,_/__/__/ |_| \_, |
+--                         |__/ 
+prettyPrintGen _ shower lvl _ tbs (Class x xs ys zs) = concat (take tbs (repeat "\t"))
+                                                    ++ "data class " ++ x ++ "<"
+                                                    ++ intersperse ", " xs ++ ">("
+                                                    ++ ( intersperse ", "
+                                                       $ map (shower ParamCTy (tbs + 1)) ys)
+                                                    ++ ") {"
+                                                    ++ ( intersperse ";\n"
+                                                       $ map (shower VarTy (tbs + 1)) zs)
+                                                    ++ " }"
+
+
 --  ___        _____     
 -- | __|  _ _ |_   _|  _ 
 -- | _| || | ' \| || || |

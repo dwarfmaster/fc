@@ -10,6 +10,7 @@ import Lightyear.Strings
 import Lightyear.Combinators
 import Lightyear.Position
 
+%access public export
 
 --  __  __ _           ---------------------------------------------------------
 -- |  \/  (_)___  ___  ---------------------------------------------------------
@@ -204,12 +205,6 @@ white = skip $ many $ (skip $ oneOf " \t\n") <|>| comment
 white1 : Parser ()
 white1 = skip $ some $ (skip $ oneOf " \t\n") <|>| comment
 
-wnewline : Parser ()
-wnewline = do
-  skip $ many $ (skip $ oneOf " \t") <|>| comment
-  skip $ string "\n"
-  white
-
 wstring : String -> Parser ()
 wstring str = white >> string str >> white
 
@@ -305,7 +300,139 @@ mutual
 
 mutual
   exprP : Parser ExprPos
-  exprP = string "expr" >> getPosition >>= \p => pure $ Ann p $ EInt 42 -- TODO
+  exprP = exprP10
+
+  exprP10 : Parser ExprPos
+  exprP10 = exprIf <|>| exprP9
+
+  exprIf : Parser ExprPos
+  exprIf = do
+    p <- getPosition
+    keyword IF
+    wstring "("
+    cond <- exprP
+    wstring ")"
+    body <- blockExprP
+    els  <- opt $ do
+      white
+      keyword ELSE
+      white
+      blockExprP
+    pure $ Ann p $ EIfElse cond body els
+
+  exprP9 : Parser ExprPos
+  exprP9 = exprReturn <|>| exprWhile <|>| exprP8
+
+  exprReturn : Parser ExprPos
+  exprReturn = keyword RETURN >> white1 >> exprP
+
+  exprWhile : Parser ExprPos
+  exprWhile = do
+    p <- getPosition
+    keyword WHILE
+    wstring "("
+    cond <- exprP
+    wstring ")"
+    body <- blockExprP
+    pure $ Ann p $ EWhile cond body
+
+  exprP8 : Parser ExprPos
+  exprP8 = do
+    p  <- getPosition
+    e1 <- exprP7
+    white
+    e2 <- opt $ parseEq p e1
+    pure $ case e2 of
+      Nothing => e1
+      Just e' => e'
+   where parseEq : Position -> ExprPos -> Parser ExprPos
+         parseEq p e1 = do
+           skip $ string "="
+           white
+           er <- exprP
+           case e1 of
+             Ann _ (EAccess access) => pure $ Ann p $ EAss access er
+             _                      => fail "Expected access"
+
+  exprP7 : Parser ExprPos
+  exprP7 = do
+    p  <- getPosition
+    e1 <- exprP6
+    white
+    e2 <- opt $ binopP p e1 Or exprP7
+    pure $ case e2 of
+      Nothing => e1
+      Just e' => e'
+
+  exprP6 : Parser ExprPos
+  exprP6 = do
+    p  <- getPosition
+    e1 <- exprP5
+    white
+    e2 <- opt $ binopP p e1 And exprP6
+    pure $ case e2 of
+      Nothing => e1
+      Just e' => e'
+
+  exprP5 : Parser ExprPos
+  exprP5 = do
+    p  <- getPosition
+    e1 <- exprP4
+    white
+    e2 <- opt $ ( binopP p e1 RefEq     exprP5
+             <|>| binopP p e1 RefNeq    exprP5
+             <|>| binopP p e1 StructEq  exprP5
+             <|>| binopP p e1 StructNeq exprP5)
+    pure $ case e2 of
+      Nothing => e1
+      Just e' => e'
+
+  exprP4 : Parser ExprPos
+  exprP4 = do
+    p  <- getPosition
+    e1 <- exprP3
+    white
+    e2 <- opt $ ( binopP p e1 Lt exprP4
+             <|>| binopP p e1 Le exprP4
+             <|>| binopP p e1 Gt exprP4
+             <|>| binopP p e1 Ge exprP4)
+    pure $ case e2 of
+      Nothing => e1
+      Just e' => e'
+
+  exprP3 : Parser ExprPos
+  exprP3 = do
+    p  <- getPosition
+    e1 <- exprP2
+    white
+    e2 <- opt $ ( binopP p e1 Plus exprP3
+             <|>| binopP p e1 Subs exprP3)
+    pure $ case e2 of
+      Nothing => e1
+      Just e' => e'
+
+  exprP2 : Parser ExprPos
+  exprP2 = do
+    p  <- getPosition
+    e1 <- exprP1
+    white
+    e2 <- opt $ ( binopP p e1 Mult   exprP2
+             <|>| binopP p e1 Div    exprP2
+             <|>| binopP p e1 Modulo exprP2)
+    pure $ case e2 of
+      Nothing => e1
+      Just e' => e'
+
+  binopP : Position -> ExprPos -> Operator -> Parser ExprPos -> Parser ExprPos
+  binopP p al op p2 = (string $ show op) >! do
+    white
+    ar <- p2
+    pure $ Ann p $ EOp op al ar
+
+  exprP1 : Parser ExprPos
+  exprP1 = getPosition >>= \p => ( string "-" >! white >> (Ann p <$> (EMinus <$> exprP1))
+                              <|>| string "!" >! white >> (Ann p <$> (ENot   <$> exprP1))
+                              <|>| exprP0 )
 
   exprP0 : Parser ExprPos
   exprP0 = do
@@ -345,13 +472,11 @@ mutual
     string ")"
     pure $ Ann p $ ECall id args
 
-  accessP : Parser AccessPos
-  accessP = ?accessPHole
-
   blockP : Parser BlockPos
   blockP = string "{" >>= \_ => commitTo $ do
-    body <- sepBy1 (varP <**> exprP) $ wstring ";"
-    opt $ white >> string ";"
+    white
+    body <- sepBy (varP <**> exprP) $ wstring ";"
+    if length body > 0 then opt $ white >> string ";" else pure Nothing
     white
     p <- getPosition
     skip $ string "}"
@@ -404,8 +529,8 @@ mutual
     args   <- sepBy1 paramCP $ wstring ","
     wstring ")"
     body   <- opt $ wstring "{" >! do
-      vars <- sepBy1 varP $ wstring ";"
-      opt $ wstring ";"
+      vars <- sepBy varP $ wstring ";"
+      if length vars > 0 then opt $ wstring ";" else pure Nothing
       white
       skip $ string "}"
       pure vars
@@ -434,6 +559,8 @@ mutual
     name   <- ident
     wstring "("
     args   <- sepBy paramP $ wstring ","
+    white
+    skip $ string ")"
     tp     <- opt $ wstring ":" >! typeP
     white
     body   <- blockP
@@ -454,7 +581,7 @@ mutual
   declP' : Parser (SyntaxF (\id => SyntaxAnn id Position) DeclTy)
   declP' = DFun   <$> funP
       <|>| DClass <$> classP
-      <|>| DVar   <$> commitTo (varP >>= \v => white >> string ";" >> pure v)
+      <|>| DVar   <$> (varP >>= \v => white >> string ";" >> pure v)
 
 
 --  _____ _ _        ____                           ----------------------------
@@ -468,7 +595,10 @@ mutual
   fileP : Parser FilePos
   fileP = do
     p     <- getPosition
-    decls <- sepBy declP wnewline
+    white
+    decls <- sepBy declP white
+    white
+    eof
     pure $ Ann p $ File decls
 
 

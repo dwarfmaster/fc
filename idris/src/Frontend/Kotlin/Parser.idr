@@ -72,7 +72,7 @@ unmaybe (Just l) = l
 
 ident : Parser String
 ident = do
-  h <- letter
+  h <- letter <|> char '_'
   t <- many alphaNum
   pure $ pack $ h :: t
 
@@ -306,9 +306,7 @@ mutual
   exprP10 = exprIf <|>| exprP9
 
   exprIf : Parser ExprPos
-  exprIf = do
-    p <- getPosition
-    keyword IF
+  exprIf = getPosition >>= \p => keyword IF >! do
     wstring "("
     cond <- exprP
     wstring ")"
@@ -324,12 +322,10 @@ mutual
   exprP9 = exprReturn <|>| exprWhile <|>| exprP8
 
   exprReturn : Parser ExprPos
-  exprReturn = keyword RETURN >> white1 >> exprP
+  exprReturn = keyword RETURN >! white1 >> exprP
 
   exprWhile : Parser ExprPos
-  exprWhile = do
-    p <- getPosition
-    keyword WHILE
+  exprWhile = getPosition >>= \p => keyword WHILE >! do
     wstring "("
     cond <- exprP
     wstring ")"
@@ -458,10 +454,21 @@ mutual
                                <|>| keyword NULL  >> pure (Ann p ENull)
                                <|>| Ann p <$> (EInt <$> number)
                                <|>| Ann p <$> (EStr <$> string)
+                               <|>| keyword FUN >! efunP p
                                <|>| string "(" >> white >>
                                       (exprP >>= \p => white >> string ")" >> pure p)
                                <|>| callP
                                <|>| Ann p <$> (EAccess <$> (Ann p <$> (AIdent <$> ident))))
+
+  efunP : Position -> Parser ExprPos
+  efunP p = do
+    wstring "("
+    args <- sepBy paramP $ wstring ","
+    wstring ")"
+    tp   <- opt $ string ":" >! white >> typeP
+    white
+    body <- blockP
+    pure $ Ann p $ EFun args tp body
 
   callP : Parser ExprPos
   callP = getPosition >>= \p =>

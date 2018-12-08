@@ -224,7 +224,9 @@ mutual
     mb <- opt $ white >> char '?'
     pure $ case mb of
       Nothing => tp
-      Just _  => Ann p $ TNull tp
+      Just _  => case tp of
+       Ann p' (TNull t) => Ann p' $ TNull t
+       _                => Ann p $ TNull tp
 
   typeNonNull : Parser TypePos
   typeNonNull = typeParenOrFun <|>| commitTo typeParams
@@ -428,9 +430,16 @@ mutual
     pure $ Ann p $ EOp op al ar
 
   exprP1 : Parser ExprPos
-  exprP1 = getPosition >>= \p => ( string "-" >! white >> (Ann p <$> (EMinus <$> exprP1))
+  exprP1 = getPosition >>= \p => ( string "-" >! white >> exprMinusP p
                               <|>| string "!" >! white >> (Ann p <$> (ENot   <$> exprP1))
                               <|>| exprP0 )
+
+  exprMinusP : Position -> Parser ExprPos
+  exprMinusP p = do
+    e <- exprP1
+    pure $ Ann p $ case e of
+      Ann _ (EInt i) => EInt $ -i
+      _              => EMinus e
 
   exprP0 : Parser ExprPos
   exprP0 = do

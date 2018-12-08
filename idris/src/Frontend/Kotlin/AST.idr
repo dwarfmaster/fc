@@ -74,11 +74,11 @@ data SyntaxF : (k : SyntaxType -> Type) -> (i : SyntaxType) -> Type where
   PCVar   : Ident -> k TypeTy -> SyntaxF k ParamCTy
   PCVal   : Ident -> k TypeTy -> SyntaxF k ParamCTy
 
-  Class   : Ident -> List Ident -> List (k ParamCTy) -- TODO FullList ?
+  Class   : Ident -> List Ident -> List (k ParamCTy)
          -> List (k VarTy) -> SyntaxF k ClassTy
 
   Fun     : List Ident -> Ident -> List (k ParamTy)
-         -> Maybe (k TypeTy) -> k BlockTy -> SyntaxF k FunTy
+         -> k TypeTy -> k BlockTy -> SyntaxF k FunTy
 
   DVar    : k VarTy -> SyntaxF k DeclTy
   DClass  : k ClassTy -> SyntaxF k DeclTy
@@ -98,10 +98,10 @@ data SyntaxF : (k : SyntaxType -> Type) -> (i : SyntaxType) -> Type where
   ENot    : k ExprTy -> SyntaxF k ExprTy
   EMinus  : k ExprTy -> SyntaxF k ExprTy
   EOp     : Operator -> k ExprTy -> k ExprTy -> SyntaxF k ExprTy
-  EIfElse : k ExprTy -> k BlockExprTy -> Maybe (k BlockExprTy) -> SyntaxF k ExprTy
+  EIfElse : k ExprTy -> k BlockExprTy -> k BlockExprTy -> SyntaxF k ExprTy
   EWhile  : k ExprTy -> k BlockExprTy -> SyntaxF k ExprTy
   EReturn : Maybe (k ExprTy) -> SyntaxF k ExprTy
-  EFun    : List (k ParamTy) -> Maybe (k TypeTy) -> k BlockTy -> SyntaxF k ExprTy
+  EFun    : List (k ParamTy) -> k TypeTy -> k BlockTy -> SyntaxF k ExprTy
 
   BEmpty  : SyntaxF k BlockTy
   BVar    : k VarTy -> k BlockTy -> SyntaxF k BlockTy
@@ -144,7 +144,7 @@ AstF SyntaxType SyntaxF where
                                                     (map (fn VarTy) ys)
 
   localMap _ _ fn FunTy (Fun xs x ys y z) = Fun xs x (map (fn ParamTy) ys)
-                                                (map (fn TypeTy) y)
+                                                (fn TypeTy y)
                                                 (fn BlockTy z)
 
   localMap _ _ fn DeclTy (DVar x)   = DVar $ fn VarTy x
@@ -167,11 +167,11 @@ AstF SyntaxType SyntaxF where
   localMap _ _ fn ExprTy (EOp x y z)     = EOp x (fn ExprTy y) (fn ExprTy z)
   localMap _ _ fn ExprTy (EIfElse x y z) = EIfElse (fn ExprTy x)
                                                    (fn BlockExprTy y)
-                                                   (map (fn BlockExprTy) z)
+                                                   (fn BlockExprTy z)
   localMap _ _ fn ExprTy (EWhile x y)    = EWhile (fn ExprTy x) (fn BlockExprTy y)
   localMap _ _ fn ExprTy (EReturn x)     = EReturn $ map (fn ExprTy) x
   localMap _ _ fn ExprTy (EFun xs x y)   = EFun (map (fn ParamTy) xs)
-                                                (map (fn TypeTy) x)
+                                                (fn TypeTy x)
                                                 (fn BlockTy y)
 
   localMap _ _ fn BlockTy BEmpty      = BEmpty

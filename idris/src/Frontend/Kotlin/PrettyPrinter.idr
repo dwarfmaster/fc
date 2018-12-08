@@ -133,9 +133,7 @@ prettyPrintGen _ shower lvl _ tbs (Fun xs x ys y z) = concat (take tbs (repeat "
                                                    ++ ( intersperse ", "
                                                       $ map (shower ParamTy 0) ys)
                                                    ++ ")"
-                                                   ++ case y of
-                                                        Nothing => ""
-                                                        Just y' => " : " ++ shower TypeTy 0 y'
+                                                   ++ " : " ++ shower TypeTy 0 y
                                                    ++ " {\n" ++ shower BlockTy (tbs + 1) z
 
 
@@ -189,10 +187,7 @@ prettyPrintGen _ shower lvl _ tbs (EOp x y z)     = ( (if lvl y > operatorLvl x 
                                                     $ shower ExprTy tbs z)
 prettyPrintGen _ shower lvl _ tbs (EIfElse x y z) = "if(" ++ shower ExprTy tbs x ++ ") "
                                                  ++ shower BlockExprTy tbs y
-                                                 ++ case z of
-                                                      Nothing => ""
-                                                      Just z' => " else "
-                                                              ++ shower BlockExprTy tbs z'
+                                                 ++ " else " ++ shower BlockExprTy tbs z
 prettyPrintGen _ shower lvl _ tbs (EWhile x y)    = "while(" ++ shower ExprTy tbs x ++ ") "
                                                  ++ shower BlockExprTy tbs y
 prettyPrintGen _ shower lvl _ tbs (EReturn x)     = "return "
@@ -203,9 +198,7 @@ prettyPrintGen _ shower lvl _ tbs (EFun xs x y)   = "fun("
                                                  ++ ( intersperse ", "
                                                     $ map (shower ParamTy tbs) xs)
                                                  ++ ") "
-                                                 ++ case x of
-                                                      Nothing => ""
-                                                      Just t  => " : " ++ shower TypeTy tbs t ++ " "
+                                                 ++ " : " ++ shower TypeTy tbs x ++ " "
                                                  ++ "{" ++ shower BlockTy (tbs + 1) y
 
 

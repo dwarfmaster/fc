@@ -316,7 +316,9 @@ mutual
       keyword ELSE
       white
       blockExprP
-    pure $ Ann p $ EIfElse cond body els
+    pure $ Ann p $ EIfElse cond body $ case els of
+                                         Nothing => Ann p $ BEBlock $ Ann p $ BEmpty
+                                         Just el => el
 
   exprP9 : Parser ExprPos
   exprP9 = exprReturn <|>| exprWhile <|>| exprP8
@@ -466,9 +468,12 @@ mutual
     args <- sepBy paramP $ wstring ","
     wstring ")"
     tp   <- opt $ string ":" >! white >> typeP
+    let typ = case tp of
+                Nothing => Ann p $ TParam "Unit" []
+                Just t  => t
     white
     body <- blockP
-    pure $ Ann p $ EFun args tp body
+    pure $ Ann p $ EFun args typ body
 
   callP : Parser ExprPos
   callP = getPosition >>= \p =>
@@ -569,9 +574,12 @@ mutual
     white
     skip $ string ")"
     tp     <- opt $ wstring ":" >! typeP
+    let typ = case tp of
+                Nothing => Ann p $ TParam "Unit" []
+                Just t  => t
     white
     body   <- blockP
-    pure $ Ann p $ Fun (unmaybe params) name args tp body
+    pure $ Ann p $ Fun (unmaybe params) name args typ body
 
 
 --  ____            _   ____                           -------------------------
